@@ -1,0 +1,25 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    # Publicado en el host para que la Lambda del dashboard (adjunta a la
+    # misma VPC) pueda conectarse por la IP privada de esta instancia.
+    # Restringido por security group, no expuesto públicamente.
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/team-board
+    ports:
+      - "80:4000"
+    depends_on:
+      - mongo
+
+volumes:
+  mongo-data:

@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Instancia EC2 que ejecuta la API de usuarios y notas (backend Express)
+  dentro de un contenedor Docker, junto con MongoDB para persistencia.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC donde se despliega la instancia (puede ser la VPC por defecto).
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet pública de esa VPC.
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Par de claves EC2 para acceso SSH.
+  InstanceType:
+    Type: String
+    Default: t3.micro
+  RepoUrl:
+    Type: String
+    Description: URL del repositorio git con el proyecto (rama a desplegar).
+  RepoBranch:
+    Type: String
+    Default: main
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Description: Secreto para firmar los JWT de autenticación.
+  SshAllowedCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: Rango IP con permiso de SSH (restringe esto en un entorno real).
+  LambdaAccessCidr:
+    Type: String
+    Default: ""
+    Description: >
+      Opcional. Rango CIDR de las subnets donde corre la Lambda del dashboard,
+      para permitirle leer MongoDB en el puerto 27017. Déjalo vacío si usarás
+      MongoDB Atlas u otra base gestionada en vez de la Mongo de esta instancia.
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-0c94855ba95c71c99 # Amazon Linux 2 (ajustar según región/fecha)
+
+Conditions:
+  AllowLambdaToMongo: !Not [!Equals [!Ref LambdaAccessCidr, ""]]
+
+Resources:
+  ApiSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Acceso HTTP a la API y SSH administrativo
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SshAllowedCidr
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 4000
+          ToPort: 4000
+          CidrIp: 0.0.0.0/0
+
+  MongoIngressForLambda:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: AllowLambdaToMongo
+    Properties:
+      GroupId: !Ref ApiSecurityGroup
+      IpProtocol: tcp
+      FromPort: 27017
+      ToPort: 27017
+      CidrIp: !Ref LambdaAccessCidr
+
+  ApiInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  ApiInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref ApiInstanceRole]
+
+  ApiInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds: [!Ref ApiSecurityGroup]
+      IamInstanceProfile: !Ref ApiInstanceProfile
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+      Tags:
+        - Key: Name
+          Value: team-board-api
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          yum update -y
+          amazon-linux-extras install docker -y
+          service docker start
+          usermod -a -G docker ec2-user
+          curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          chmod +x /usr/local/bin/docker-compose
+          yum install -y git
+          cd /opt
+          git clone --branch ${RepoBranch} ${RepoUrl} team-board
+          cd team-board
+          cat > backend/.env <<EOF
+          PORT=4000
+          MONGO_URI=mongodb://mongo:27017/team-board
+          JWT_SECRET=${JwtSecret}
+          JWT_EXPIRES_IN=8h
+          EOF
+          docker-compose -f docker-compose.prod.yml up -d --build
+          docker-compose -f docker-compose.prod.yml exec -T backend npm run seed
+
+Outputs:
+  PublicIp:
+    Value: !GetAtt ApiInstance.PublicIp
+  ApiUrl:
+    Value: !Sub "http://${ApiInstance.PublicIp}/api"

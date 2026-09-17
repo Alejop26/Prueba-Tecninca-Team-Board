@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Función Lambda que calcula las métricas del dashboard (total de notas y
+  distribución por estado) y las expone vía API Gateway. Reutiliza la misma
+  lógica que la API Express (backend/src/services/metrics.js).
+
+Parameters:
+  MongoUri:
+    Type: String
+    Description: >
+      Cadena de conexión a MongoDB accesible desde Lambda (instancia en la
+      misma VPC que EC2, o un clúster gestionado como MongoDB Atlas).
+    NoEcho: true
+  Stage:
+    Type: String
+    Default: metrics
+    Description: Nombre del stage/ruta del API Gateway.
+  VpcSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: >
+      Opcional. Subnets para adjuntar la Lambda a una VPC (necesario solo si
+      MongoUri apunta a una IP privada, p. ej. la instancia EC2 del backend).
+  VpcSecurityGroupIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Opcional. Security groups a usar junto con VpcSubnetIds.
+
+Conditions:
+  UseVpc: !Not [!Equals [!Join ["", !Ref VpcSubnetIds], ""]]
+
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 256
+    Runtime: nodejs20.x
+
+Resources:
+  MetricsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../../backend/
+      Handler: lambda/metrics.handler
+      Environment:
+        Variables:
+          MONGO_URI: !Ref MongoUri
+      VpcConfig:
+        !If
+          - UseVpc
+          - SubnetIds: !Ref VpcSubnetIds
+            SecurityGroupIds: !Ref VpcSecurityGroupIds
+          - !Ref AWS::NoValue
+      Events:
+        GetMetrics:
+          Type: Api
+          Properties:
+            Path: /
+            Method: GET
+            RestApiId: !Ref MetricsApi
+
+  MetricsApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Stage
+      Cors:
+        AllowMethods: "'GET,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+
+Outputs:
+  MetricsEndpoint:
+    Description: URL pública de las métricas del dashboard
+    Value: !Sub "https://${MetricsApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/"

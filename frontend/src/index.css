@@ -1,0 +1,122 @@
+@import url("https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap");
+
+:root {
+  --status-pendiente: #f5e663;
+  --status-pendiente-ink: #6b5e0f;
+  --status-curso: #f4b183;
+  --status-curso-ink: #7a3d10;
+  --status-hecho: #b7e3c4;
+  --status-hecho-ink: #1f5c37;
+  --radius-note: 4px 16px 4px 16px;
+  --shadow-note: 2px 4px 10px rgba(31, 36, 48, 0.18);
+}
+
+body {
+  background-color: #f6f4ef;
+}
+
+/* --- Tablero --- */
+.board-canvas {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 230px);
+  min-height: 460px;
+  background-color: #efe6d2;
+  background-image: radial-gradient(#d8cdae 1px, transparent 1px);
+  background-size: 22px 22px;
+  border: 1px solid #dcd7cc;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.note {
+  position: absolute;
+  width: 210px;
+  min-height: 180px;
+  padding: 12px 14px 14px;
+  border-radius: var(--radius-note);
+  box-shadow: var(--shadow-note);
+  cursor: grab;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: "Patrick Hand", cursive;
+}
+
+.note:active {
+  cursor: grabbing;
+}
+
+.note.status-pendiente {
+  background: var(--status-pendiente);
+  color: var(--status-pendiente-ink);
+}
+.note.status-en-curso {
+  background: var(--status-curso);
+  color: var(--status-curso-ink);
+}
+.note.status-hecho {
+  background: var(--status-hecho);
+  color: var(--status-hecho-ink);
+}
+
+.note input.note-title {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.25);
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 2px 0 4px;
+  color: inherit;
+}
+
+.note textarea.note-text {
+  background: transparent;
+  border: none;
+  resize: none;
+  flex: 1;
+  font-family: inherit;
+  font-size: 0.98rem;
+  color: inherit;
+  line-height: 1.3;
+}
+
+.note input:focus,
+.note textarea:focus,
+.note select:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.note-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.note-status-select {
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.5);
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.72rem;
+  padding: 2px 4px;
+}
+
+.note-actions button {
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.72rem;
+  padding: 3px 8px;
+}
+
+.empty-board {
+  color: #6c757d;
+  padding: 40px;
+}
+
+.sidebar-link.active {
+  background-color: rgba(255, 255, 255, 0.15);
+  color: #fff !important;
+}
